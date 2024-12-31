@@ -91,65 +91,101 @@ app.post("/login", async (req, res) => {
 })
 app.get("/home", async (req, res) => {
     try {
-        // console.log("Home route");
-        // console.log(req.headers);
         let access_token = req.cookies.access_token;
-        if (!access_token) {
-            return res.send("You are not autheticated!");
-        }
-        if (access_token) {
-            jwt.verify(access_token, MY_KEY, async (err, data) => {
-                if (err) {
-                    console.log(err);
-                    console.log("/n ----SOO USES YOUR REFRESH TOKEN--------- /n");
-                    let refresh_token = req.cookies.refresh_token;
-                    jwt.verify(refresh_token, MY_REFRESH_KEY, async (err, data) => {
-                        if (err) {
-                            res.send("YOUR REFRESH EXPIRED KINDLY LOGIN!");
-                        }
-                        else {
-                            console.log(data);
-                            let registeredUser = await user.findOne({ username: data.username });
-                            if (registeredUser) {
-                                res.clearCookie();
-                                let access_token = jwt.sign({ _id: registeredUser._id, username: registeredUser.username }, {
-                                    expiresIn: '10s'
-                                });
-                                let refresh_token = jwt.sign({ _id: registeredUser._id, username: registeredUser.username }, {
-                                    expiresIn: '20s'
-                                });
-                                res.cookie("access_token", access_token, {
-                                    expires: Date.now() + 1000 * 60 * 60
-                                });
-                                res.cookie("refresh_token", refresh_token, {
-                                    expires: Date.now() + 1000 * 60 * 60
-                                })
-                                res.send(`you are using refresh token soo i refresh your acces token and refresh: /n ${data}`);
-                            }
-                            else {
-                                res.send("Kindly login again")
-                            }
-                        }
-                    })
+        let refresh_token = req.cookies.refresh_token;
+        console.log(refresh_token);
 
-                }
-                else {
-                    let userD = await user.findOne({ username: data.username });
-                    if (userD) {
-                        req.user = data;
-                        res.send(req.user);
-                    }
-                    else {
-                        res.send("Such User was deleted!");
-                    }
-                }
-            })
+        if (!access_token && !refresh_token) {
+            return res.send("You are not authenticated!");
         }
-        else {
+
+        if (access_token || refresh_token) {
+            if (access_token) {
+                jwt.verify(access_token, MY_KEY, async (err, data) => {
+                    if (err) {
+                        console.log(err);
+                        console.log("/n ----SOO USES YOUR REFRESH TOKEN--------- /n");
+
+                        jwt.verify(refresh_token, MY_REFRESH_KEY, async (err, data) => {
+                            if (err) {
+                                res.send("YOUR REFRESH EXPIRED KINDLY LOGIN!");
+                            } else {
+                                console.log(data);
+                                let registeredUser = await user.findOne({ username: data.username });
+                                if (registeredUser) {
+                                    res.clearCookie("access_token");
+                                    res.clearCookie("refresh_token");
+
+                                    let access_token = jwt.sign({ _id: registeredUser._id, username: registeredUser.username }, MY_KEY, {
+                                        expiresIn: "10s"
+                                    });
+                                    let refresh_token = jwt.sign({ _id: registeredUser._id, username: registeredUser.username }, MY_REFRESH_KEY, {
+                                        expiresIn: "20s"
+                                    });
+
+                                    res.cookie("access_token", access_token, {
+                                        httpOnly: true,
+                                        maxAge: 1000 * 60 * 60
+                                    });
+                                    res.cookie("refresh_token", refresh_token, {
+                                        httpOnly: true,
+                                        maxAge: 1000 * 60 * 60
+                                    });
+
+                                    res.send(`You are using refresh token, so I refreshed your access and refresh tokens: /n ${data}`);
+                                } else {
+                                    res.send("Kindly login again");
+                                }
+                            }
+                        });
+                    } else {
+                        let userD = await user.findOne({ username: data.username });
+                        if (userD) {
+                            req.user = data;
+                            res.send(req.user);
+                        } else {
+                            res.send("Such user was deleted!");
+                        }
+                    }
+                });
+            } else if (refresh_token) {
+                jwt.verify(refresh_token, MY_REFRESH_KEY, async (err, data) => {
+                    if (err) {
+                        res.send("YOUR REFRESH EXPIRED KINDLY LOGIN!");
+                    } else {
+                        console.log(data);
+                        let registeredUser = await user.findOne({ username: data.username });
+                        if (registeredUser) {
+                            res.clearCookie("access_token");
+                            res.clearCookie("refresh_token");
+
+                            let access_token = jwt.sign({ _id: registeredUser._id, username: registeredUser.username }, MY_KEY, {
+                                expiresIn: "10s"
+                            });
+                            let refresh_token = jwt.sign({ _id: registeredUser._id, username: registeredUser.username }, MY_REFRESH_KEY, {
+                                expiresIn: "20s"
+                            });
+
+                            res.cookie("access_token", access_token, {
+                                httpOnly: true,
+                                maxAge: 1000 * 60 * 60
+                            });
+                            res.cookie("refresh_token", refresh_token, {
+                                httpOnly: true,
+                                maxAge: 1000 * 60 * 60
+                            });
+
+                            res.send(`You are using refresh token, so I refreshed your access and refresh tokens: /n ${data}`);
+                        } else {
+                            res.send("Kindly login again");
+                        }
+                    }
+                });
+            }
+        } else {
             res.send("Please send required headers");
         }
-    }
-    catch (err) {
+    } catch (err) {
         console.log(err);
     }
 });
