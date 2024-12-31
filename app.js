@@ -5,6 +5,7 @@ const bcryptjs = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const user = require("./user");
 const MY_KEY = "nigga";
+const MY_REFRESH_KEY = "nigga2";
 const cookieParser = require("cookie-parser");
 mongoose.connect("mongodb://127.0.0.1:27017/jwt").then(() => {
     console.log("Connected to mongoDB");
@@ -25,13 +26,21 @@ app.post("/register", async (req, res) => {
         let nU = new user({ username, password });
         let registeredUser = await nU.save();
         console.log("user saved succesfully:-", registeredUser);
-        let token = jwt.sign({ _id: registeredUser._id, username: registeredUser.username }, MY_KEY, {
-            expiresIn: "1000s"
+        let access_token = jwt.sign({ _id: registeredUser._id, username: registeredUser.username }, MY_KEY, {
+            expiresIn: "10s"
+        })
+        let refresh_token = jwt.sign({ _id: registeredUser._id, username: registeredUser.username }, MY_REFRESH_KEY, {
+            expiresIn: "20s"
         });
-        console.log(token);
-        res.cookie("token", token, {
-            expires: new Date(Date.now() + 5000)
+
+        console.log(access_token);
+        res.cookie("access_token", access_token, {
+            maxAge: new Date(Date.now() + 1000 * 10)
         });
+        res.cookie("refresh_token", refresh_token, {
+            httpOnly: true,
+            maxAge: new Date(Date.now() + 1000 * 60)
+        })
         // res.set("authorisation",`Bearer ${token}`);
         res.redirect("/home");
     }
@@ -55,44 +64,83 @@ app.post("/login", async (req, res) => {
         console.log(result);
         console.log("working///");
         if (result) {
-            let token = jwt.sign({ id: uD._id, username: uD.username }, MY_KEY, {
-                expiresIn: "1000s"
-            })
-            // res.set("authorisation",`Bearer ${token}`)
-            res.cookie("token", token,{
-                maxAge:Date.now()+1000*1000
+            console.log("Inside if");
+            let access_token = jwt.sign({ _id: uD._id, username: uD.username }, MY_KEY, {
+                expiresIn: "10s"
             });
+            let refresh_token = jwt.sign({ _id: uD._id, username: uD.username }, MY_REFRESH_KEY, {
+                expiresIn: "20s"
+            });
+            console.log(access_token);
+            console.log(refresh_token);
+            // res.set("authorisation",`Bearer ${token}`)
+            res.cookie("access_token", access_token, {
+                maxAge: new Date(Date.now() + 1000 * 10)
+            });
+            res.cookie("refresh_token", refresh_token, {
+                httpOnly: true,
+                maxAge: new Date(Date.now() + 1000 * 60)
+            })
             return res.redirect("/home");
         }
-        return res.send("Password is wrong")
+        return res.send("Password is wrong");
     }
     catch (err) {
-        res.status(500).send(err)
+        res.status(500).send(err);
     }
 })
 app.get("/home", async (req, res) => {
     try {
         // console.log("Home route");
         // console.log(req.headers);
-        let token = req.cookies.token
-        if (!token) {
-            return res.send("You are not autheticated!")
+        let access_token = req.cookies.access_token;
+        if (!access_token) {
+            return res.send("You are not autheticated!");
         }
-        if (token) {
-            jwt.verify(token, MY_KEY, async (err, data) => {
+        if (access_token) {
+            jwt.verify(access_token, MY_KEY, async (err, data) => {
                 if (err) {
                     console.log(err);
-                    return res.send("Invalid JWT or token expied!")
+                    console.log("/n ----SOO USES YOUR REFRESH TOKEN--------- /n");
+                    let refresh_token = req.cookies.refresh_token;
+                    jwt.verify(refresh_token, MY_REFRESH_KEY, async (err, data) => {
+                        if (err) {
+                            res.send("YOUR REFRESH EXPIRED KINDLY LOGIN!");
+                        }
+                        else {
+                            console.log(data);
+                            let registeredUser = await user.findOne({ username: data.username });
+                            if (registeredUser) {
+                                res.clearCookie();
+                                let access_token = jwt.sign({ _id: registeredUser._id, username: registeredUser.username }, {
+                                    expiresIn: '10s'
+                                });
+                                let refresh_token = jwt.sign({ _id: registeredUser._id, username: registeredUser.username }, {
+                                    expiresIn: '20s'
+                                });
+                                res.cookie("access_token", access_token, {
+                                    expires: Date.now() + 1000 * 60 * 60
+                                });
+                                res.cookie("refresh_token", refresh_token, {
+                                    expires: Date.now() + 1000 * 60 * 60
+                                })
+                                res.send(`you are using refresh token soo i refresh your acces token and refresh: /n ${data}`);
+                            }
+                            else {
+                                res.send("Kindly login again")
+                            }
+                        }
+                    })
+
                 }
                 else {
-                    let userD = await user.findOne({ username: data.username })
+                    let userD = await user.findOne({ username: data.username });
                     if (userD) {
-                        req.user = data
-                        res.send(req.user)
+                        req.user = data;
+                        res.send(req.user);
                     }
                     else {
-                        res.clearCookie("token");
-                        res.send("Such User was deleted!")
+                        res.send("Such User was deleted!");
                     }
                 }
             })
@@ -100,13 +148,11 @@ app.get("/home", async (req, res) => {
         else {
             res.send("Please send required headers");
         }
-
     }
     catch (err) {
         console.log(err);
     }
-})
-app.listen(8000, (req, res) => {
-    console.log("SErver 2 is listeing to 8000...");
-
-})
+});
+app.listen(5000, (req, res) => {
+    console.log("Server is listeing to 5000...");
+});
